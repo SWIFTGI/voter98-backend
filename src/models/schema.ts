@@ -1,0 +1,197 @@
+import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
+import { createId } from '@paralleldrive/cuid2';
+
+// Users table
+export const users = sqliteTable('users', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  email: text('email').notNull().unique(),
+  password: text('password').notNull(),
+  name: text('name').notNull(),
+  role: text('role').notNull().default('user'), // 'admin', 'sub-admin', 'user'
+  groupIDs: text('group_ids', { mode: 'json' }).notNull().default('[]'), // JSON array of group IDs
+  createdAt: integer('created_at').notNull().$defaultFn(() => Date.now()),
+  updatedAt: integer('updated_at').notNull().$defaultFn(() => Date.now())
+});
+
+// User groups table
+export const userGroups = sqliteTable('user_groups', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  name: text('name').notNull(),
+  description: text('description'),
+  createdById: text('created_by_id').notNull().references(() => users.id),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Date.now()),
+  updatedAt: integer('updated_at').notNull().$defaultFn(() => Date.now())
+});
+
+// Polls table
+export const polls = sqliteTable('polls', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  title: text('title').notNull(),
+  description: text('description'),
+  startDate: integer('start_date').notNull(),
+  endDate: integer('end_date').notNull(),
+  status: text('status').notNull().default('draft'), // 'draft', 'active', 'completed', 'cancelled'
+  managerId: text('manager_id').notNull().references(() => users.id),
+  createdById: text('created_by_id').notNull().references(() => users.id),
+  settings: text('settings', { mode: 'json' }).notNull().default('{}'), // JSON object for poll settings
+  ballot: text('ballot', { mode: 'json' }).notNull().default('[]'), // JSON array of ballot questions
+  willSendEmails: integer('will_send_emails', { mode: 'boolean' }).notNull().default(false), // Enable automatic email sending
+  createdAt: integer('created_at').notNull().$defaultFn(() => Date.now()),
+  updatedAt: integer('updated_at').notNull().$defaultFn(() => Date.now())
+});
+
+// Poll auditors table (many-to-many relationship)
+export const pollAuditors = sqliteTable('poll_auditors', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  pollId: text('poll_id').notNull().references(() => polls.id),
+  userId: text('user_id').notNull().references(() => users.id),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Date.now())
+});
+
+// Poll editors table (many-to-many relationship)
+export const pollEditors = sqliteTable('poll_editors', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  pollId: text('poll_id').notNull().references(() => polls.id),
+  userId: text('user_id').notNull().references(() => users.id),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Date.now())
+});
+
+// Poll participants table
+export const pollParticipants = sqliteTable('poll_participants', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  pollId: text('poll_id').notNull().references(() => polls.id),
+  userId: text('user_id').references(() => users.id), // null for non-user participants
+  name: text('name').notNull(),
+  email: text('email').notNull(),
+  isUser: integer('is_user', { mode: 'boolean' }).notNull().default(false),
+  token: text('token').unique(), // one-time use token for non-user participants
+  tokenUsed: integer('token_used', { mode: 'boolean' }).notNull().default(false),
+  tokenViewed: integer('token_viewed', { mode: 'boolean' }).notNull().default(false),
+  tokenLastRevokedAt: integer('token_last_revoked_at'), // timestamp of last token revocation
+  voteWeight: real('vote_weight').notNull().default(1.0),
+  status: text('status').notNull().default('pending'), // 'pending', 'approved', 'rejected'
+  hasVoted: integer('has_voted', { mode: 'boolean' }).notNull().default(false),
+  lastEmailSentAt: integer('last_email_sent_at'), // timestamp when last email was sent
+  createdAt: integer('created_at').notNull().$defaultFn(() => Date.now()),
+  updatedAt: integer('updated_at').notNull().$defaultFn(() => Date.now())
+});
+
+// Poll votes table
+export const pollVotes = sqliteTable('poll_votes', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  pollId: text('poll_id').notNull().references(() => polls.id),
+  participantId: text('participant_id').notNull().references(() => pollParticipants.id),
+  questionId: text('question_id').notNull(), // ID of the ballot question
+  selectedOptions: text('selected_options', { mode: 'json' }).notNull(), // JSON array of selected option IDs
+  voteWeight: real('vote_weight').notNull().default(1.0),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Date.now())
+});
+
+// SMTP table for storing email configurationss
+export const smtpConfig = sqliteTable('smtp_config', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  host: text('host').notNull(),
+  port: integer('port').notNull(),
+  user: text('user').notNull(),
+  password: text('password').notNull(),
+  secure: integer('secure', { mode: 'boolean' }).notNull().default(false), // true for SSL, false for TLS
+  createdAt: integer('created_at').notNull().$defaultFn(() => Date.now()),
+  updatedAt: integer('updated_at').notNull().$defaultFn(() => Date.now()),
+  dailyLimit: integer('daily_limit').notNull().default(100), // Daily email sending limit
+  dailySent: integer('daily_sent').notNull().default(0), // Emails sent today
+  cronLimit: integer('cron_limit').notNull().default(10), // Emails sent per cron job execution
+  cronSent: integer('cron_sent').notNull().default(0), // Emails sent in current cron execution
+  order: integer('order').notNull().default(1), // Order for prioritization
+});
+
+// System audit event table
+export const auditEvents = sqliteTable('audit_events', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+
+  // what is being acted on (can be null depending on action)
+  actorUserId: text('actor_user_id').references(() => users.id), // admin, sub-admin
+  pollId: text('poll_id').references(() => polls.id),
+  participantId: text('participant_id').references(() => pollParticipants.id),
+
+  // standardized event type
+  eventType: text('event_type').notNull(), 
+  // examples:
+  // "TOKEN_VIEWED", "TOKEN_REVOKED",
+  // "PARTICIPANT_APPROVED", "PARTICIPANT_REJECTED",
+  // "VOTE_CAST", "LOGIN_FAILED",
+  // "ADMIN_IP_LOGGED", "EMAIL_SENT", ...
+
+  // JSON payload for any custom data
+  meta: text('meta', { mode: 'json' }),
+
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+
+  createdAt: integer('created_at').notNull().$defaultFn(() => Date.now())
+});
+
+// Mail templates table for storing email templates
+export const mailTemplates = sqliteTable('mail_templates', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  name: text('name').notNull(), // Template name for identification
+  subject: text('subject').notNull(), // Email subject line
+  body: text('body').notNull(), // Plain text email body
+  htmlBody: text('html_body'), // HTML email body (optional)
+  isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false), // Is this the default template?
+  createdAt: integer('created_at').notNull().$defaultFn(() => Date.now()),
+  updatedAt: integer('updated_at').notNull().$defaultFn(() => Date.now())
+});
+
+
+
+// Types for TypeScript
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+export type UserGroup = typeof userGroups.$inferSelect;
+export type NewUserGroup = typeof userGroups.$inferInsert;
+export type Poll = typeof polls.$inferSelect;
+export type NewPoll = typeof polls.$inferInsert;
+export type PollParticipant = typeof pollParticipants.$inferSelect;
+export type NewPollParticipant = typeof pollParticipants.$inferInsert;
+export type PollVote = typeof pollVotes.$inferSelect;
+export type NewPollVote = typeof pollVotes.$inferInsert;
+export type SmtpConfig = typeof smtpConfig.$inferSelect;
+export type NewSmtpConfig = typeof smtpConfig.$inferInsert;
+export type AuditEvent = typeof auditEvents.$inferSelect;
+export type NewAuditEvent = typeof auditEvents.$inferInsert;
+export type MailTemplate = typeof mailTemplates.$inferSelect;
+export type NewMailTemplate = typeof mailTemplates.$inferInsert;
+
+// Ballot question and option types
+export interface BallotOption {
+  id: string;
+  title: string;
+  shortDescription?: string;
+  longDescription?: string;
+  link?: string;
+  image?: string;
+}
+
+export interface BallotQuestion {
+  id: string;
+  title: string;
+  description?: string;
+  randomizedOrder?: boolean;
+  minSelection?: number;
+  maxSelection?: number;
+  attachments?: string[];
+  image?: string;
+  options: BallotOption[];
+}
+
+export interface PollSettings {
+  showParticipantNames?: boolean;
+  showParticipantInitials?: boolean;
+  showVoteWeights?: boolean;
+  showVoteCounts?: boolean;
+  showResultsBeforeEnd?: boolean;
+  allowResultsView?: boolean;
+  voteWeightEnabled?: boolean;
+  allowInPersonVoting?: boolean;
+  mailTemplateId?: string; // Reference to custom mail template for this poll
+}

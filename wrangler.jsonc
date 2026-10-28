@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "voter98-backend",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-07-09",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "triggers": {
+    "crons": [
+      "*/5 * * * *",
+      "0 0 * * *"
+    ]
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "vars": {
+    "JWT_SECRET": "JosephBoo1",
+    "FRONTEND_URL": "https://poll.swiftgi.uk",
+    "TIMEZONE": "Europe/London"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "voter-db",
+      "database_id": "ca13aa79-b15b-4f14-9605-a23f191203ae"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "IMAGES_BUCKET",
+      "bucket_name": "voter98-images",
+      "preview_bucket_name": "voter98-images"
+    }
+  ]
+}
